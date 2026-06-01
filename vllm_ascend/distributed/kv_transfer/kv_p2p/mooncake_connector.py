@@ -375,7 +375,7 @@ class KVCacheRecvingThread(threading.Thread):
 
         self.num_draft_layers = 0
         if self.vllm_config.speculative_config is not None:
-            if self.vllm_config.speculative_config.method == "mtp":
+            if self.vllm_config.speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp"):
                 # all MTP layer use the same kv cache layer, so only need to transfer once
                 self.num_draft_layers = 1
             elif (
