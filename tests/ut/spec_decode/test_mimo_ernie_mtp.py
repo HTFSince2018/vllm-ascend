@@ -70,6 +70,10 @@ class TestMimoErnieMethodRouting:
         vllm_config.model_config = MagicMock()
         vllm_config.model_config.dtype = torch.float16
         vllm_config.model_config.max_model_len = 2048
+        vllm_config.model_config.hf_config = MagicMock()
+        vllm_config.model_config.hf_config.architectures = []
+        vllm_config.model_config.registry = MagicMock()
+        vllm_config.model_config.registry.resolve_model_cls.return_value = (MagicMock(), "test")
         vllm_config.parallel_config = MagicMock()
         vllm_config.parallel_config.tensor_parallel_size = 1
         vllm_config.parallel_config.data_parallel_rank = 0
@@ -92,6 +96,10 @@ class TestMimoErnieMethodRouting:
         vllm_config.model_config = MagicMock()
         vllm_config.model_config.dtype = torch.float16
         vllm_config.model_config.max_model_len = 2048
+        vllm_config.model_config.hf_config = MagicMock()
+        vllm_config.model_config.hf_config.architectures = []
+        vllm_config.model_config.registry = MagicMock()
+        vllm_config.model_config.registry.resolve_model_cls.return_value = (MagicMock(), "test")
         vllm_config.parallel_config = MagicMock()
         vllm_config.parallel_config.tensor_parallel_size = 1
         vllm_config.parallel_config.data_parallel_rank = 0
@@ -141,7 +149,7 @@ class TestMimoErnieInEagleProposer:
         speculative_config.disable_padded_drafter_batch = False
         speculative_config.draft_tensor_parallel_size = 1
         speculative_config.use_local_argmax_reduction = False
-        speculative_config.speculative_token_tree = "[0]"
+        speculative_config.speculative_token_tree = "[(0,)]"
 
         vllm_config = MagicMock(spec=VllmConfig)
         vllm_config.speculative_config = speculative_config
