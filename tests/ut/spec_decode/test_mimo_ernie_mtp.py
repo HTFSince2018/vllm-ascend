@@ -16,64 +16,44 @@
 #
 """Tests for mimo_mtp and ernie_mtp method support.
 
-These tests verify that:
-1. ``mimo_mtp`` and ``ernie_mtp`` are recognised as valid MTP method names
-   in the upstream vLLM ``MTPModelTypes`` literal.
-2. The ``patch_mimo_ernie_mtp.py`` module can be imported without errors.
-3. The speculative decoding method routing includes ``mimo_mtp`` and
-   ``ernie_mtp`` alongside the existing ``mtp`` method.
-4. The utility function ``speculative_enable_dispatch_gmm_combine_decode``
-   correctly identifies these methods as MTP (not EAGLE) methods.
-5. The MTP method aliases will be normalised to ``mtp`` by upstream logic.
+These tests verify:
+
+1. **MTP method recognition** — ``mimo_mtp`` and ``ernie_mtp`` are listed in
+   the upstream vLLM ``MTPModelTypes`` literal type and will be normalised to
+   ``mtp`` by ``SpeculativeConfig.__post_init__``.
+
+2. **Method routing** — ``get_spec_decode_method`` returns an
+   ``AscendEagleProposer`` instance for both method names.
+
+3. **MTP method detection** — The utility function
+   ``speculative_enable_dispatch_gmm_combine_decode`` correctly classifies
+   these methods as MTP (not EAGLE) methods.
+
+4. **Patch module** — The ``patch_mimo_ernie_mtp.py`` module loads without
+   errors when the vllm-ascend package is up to date.
 """
 
-import ast
-import os
 from typing import get_args
+from unittest.mock import MagicMock
 
 import pytest
+import torch
+from vllm.config import CacheConfig, VllmConfig
 from vllm.config.speculative import MTPModelTypes
 
-# Path to the project root (two levels up from tests/ut/spec_decode/).
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from vllm_ascend.spec_decode import get_spec_decode_method
+from vllm_ascend.spec_decode.eagle_proposer import AscendEagleProposer
+from vllm_ascend.utils import speculative_enable_dispatch_gmm_combine_decode
 
 
 # ---------------------------------------------------------------------------
-#  Internal helpers
+#  1.  MTP method recognition
 # ---------------------------------------------------------------------------
 
-def _get_source_file_path(relative_path: str) -> str:
-    """Return the absolute path of a source file inside the project."""
-    return os.path.normpath(os.path.join(PROJECT_ROOT, relative_path))
-
-
-def _read_source_file(relative_path: str) -> str:
-    """Read and return the contents of a source file."""
-    path = _get_source_file_path(relative_path)
-    with open(path, encoding="utf-8") as f:
-        return f.read()
-
-
-def _routing_tuple_contains(method: str) -> bool:
-    """Check whether *method* appears in the routing tuple inside
-    ``vllm_ascend/spec_decode/__init__.py``."""
-    source = _read_source_file("vllm_ascend/spec_decode/__init__.py")
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Tuple):
-            elts = [ast.literal_eval(e) for e in node.elts if isinstance(e, ast.Constant)]
-            if method in elts:
-                return True
-    return False
-
-
-# ---------------------------------------------------------------------------
-#  1.  Method recognition
-# ---------------------------------------------------------------------------
 
 class TestMimoErnieMethodRecognition:
-    """Verify that ``mimo_mtp`` and ``ernie_mtp`` are recognised as valid MTP
-    method names in the upstream vLLM ``MTPModelTypes`` literal type."""
+    """Both ``mimo_mtp`` and ``ernie_mtp`` must be recognised as valid MTP
+    method names by the upstream vLLM framework."""
 
     def test_mimo_mtp_in_mtp_model_types(self):
         assert "mimo_mtp" in get_args(MTPModelTypes)
@@ -86,11 +66,10 @@ class TestMimoErnieMethodRecognition:
 #  2.  Method normalisation
 # ---------------------------------------------------------------------------
 
+
 class TestMimoErnieMethodNormalization:
-    """Upstream vLLM converts deprecated MTP method aliases (such as
-    ``mimo_mtp`` and ``ernie_mtp``) to ``mtp`` via
-    ``SpeculativeConfig.__post_init__``.  These tests confirm that the aliases
-    are present in the set of types that are subject to normalisation."""
+    """Deprecated MTP aliases are normalised to ``mtp`` upstream — confirm
+    all relevant strings are in the type set so normalisation will fire."""
 
     def test_mimo_mtp_normalized_to_mtp(self):
         assert "mimo_mtp" in get_args(MTPModelTypes)
@@ -105,38 +84,62 @@ class TestMimoErnieMethodNormalization:
 
 
 # ---------------------------------------------------------------------------
-#  3.  Source-code routing check
+#  3.  Method routing
 # ---------------------------------------------------------------------------
 
-class TestMimoErnieSourceRouting:
-    """Verify that the speculative-decoding method routing tuple in the
-    *source code* includes ``mimo_mtp`` and ``ernie_mtp``.
 
-    Because the test reads the source file directly it does **not** depend on
-    which vllm-ascend package revision is installed in the runtime environment.
-    """
+class TestMimoErnieMethodRouting:
+    """``get_spec_decode_method`` must return an ``AscendEagleProposer``
+    when called with either ``mimo_mtp`` or ``ernie_mtp``."""
 
-    def test_mimo_mtp_in_routing_tuple(self):
-        assert _routing_tuple_contains("mimo_mtp"), \
-            "mimo_mtp not found in spec_decode/__init__.py routing tuple"
+    _COMMON_CONFIG = {
+        "cache_config.block_size": 16,
+        "scheduler_config.max_num_batched_tokens": 1024,
+        "scheduler_config.max_num_seqs": 32,
+        "model_config.dtype": torch.float16,
+        "model_config.max_model_len": 2048,
+        "parallel_config.tensor_parallel_size": 1,
+        "parallel_config.data_parallel_rank": 0,
+        "parallel_config.data_parallel_size": 1,
+        "speculative_config.draft_tensor_parallel_size": 1,
+        "speculative_config.num_speculative_tokens": 1,
+    }
 
-    def test_ernie_mtp_in_routing_tuple(self):
-        assert _routing_tuple_contains("ernie_mtp"), \
-            "ernie_mtp not found in spec_decode/__init__.py routing tuple"
+    def _make_vllm_config(self, method: str):
+        vllm_config = MagicMock(spec=VllmConfig)
+        vllm_config.speculative_config = MagicMock()
+        vllm_config.cache_config = MagicMock(spec=CacheConfig)
+        vllm_config.scheduler_config = MagicMock()
+        vllm_config.model_config = MagicMock()
+        vllm_config.parallel_config = MagicMock()
+        vllm_config.compilation_config = MagicMock()
+        for attr, val in self._COMMON_CONFIG.items():
+            obj, _, field = attr.partition(".")
+            getattr(vllm_config, obj).__setattr__(field, val)
+        vllm_config.speculative_config.method = method
+        return vllm_config
+
+    def test_mimo_mtp_routes_to_eagle_proposer(self):
+        vllm_config = self._make_vllm_config("mimo_mtp")
+        proposer = get_spec_decode_method("mimo_mtp", vllm_config, torch.device("cpu"), MagicMock())
+        assert isinstance(proposer, AscendEagleProposer)
+
+    def test_ernie_mtp_routes_to_eagle_proposer(self):
+        vllm_config = self._make_vllm_config("ernie_mtp")
+        proposer = get_spec_decode_method("ernie_mtp", vllm_config, torch.device("cpu"), MagicMock())
+        assert isinstance(proposer, AscendEagleProposer)
 
 
 # ---------------------------------------------------------------------------
-#  4.  Method detection in utility functions
+#  4.  MTP method detection in utility functions
 # ---------------------------------------------------------------------------
+
 
 class TestMimoErnieMethodDetection:
-    """Test that ``speculative_enable_dispatch_gmm_combine_decode`` correctly
-    identifies ``mimo_mtp`` and ``ernie_mtp`` as MTP methods."""
+    """``speculative_enable_dispatch_gmm_combine_decode`` must return ``False``
+    for MTP methods (they are *not* EAGLE methods)."""
 
     def _make_vllm_config(self, method):
-        from unittest.mock import MagicMock
-        from vllm.config import VllmConfig
-
         vllm_config = MagicMock(spec=VllmConfig)
         vllm_config.speculative_config = MagicMock()
         vllm_config.speculative_config.method = method
@@ -146,30 +149,22 @@ class TestMimoErnieMethodDetection:
         return vllm_config
 
     def test_mimo_mtp_detected_as_mtp_method(self):
-        from vllm_ascend.utils import speculative_enable_dispatch_gmm_combine_decode
-        vllm_config = self._make_vllm_config("mimo_mtp")
-        result = speculative_enable_dispatch_gmm_combine_decode(vllm_config)
+        result = speculative_enable_dispatch_gmm_combine_decode(self._make_vllm_config("mimo_mtp"))
         assert result is False
 
     def test_ernie_mtp_detected_as_mtp_method(self):
-        from vllm_ascend.utils import speculative_enable_dispatch_gmm_combine_decode
-        vllm_config = self._make_vllm_config("ernie_mtp")
-        result = speculative_enable_dispatch_gmm_combine_decode(vllm_config)
+        result = speculative_enable_dispatch_gmm_combine_decode(self._make_vllm_config("ernie_mtp"))
         assert result is False
 
 
 # ---------------------------------------------------------------------------
-#  5.  Patch file existence & importability
+#  5.  Patch module import
 # ---------------------------------------------------------------------------
 
+
 class TestMimoErniePatchLoading:
-    """Verify that the ``patch_mimo_ernie_mtp.py`` file exists and can be
-    imported after the vllm-ascend package is updated to include it."""
+    """The ``patch_mimo_ernie_mtp.py`` module must be importable after the
+    package is built / installed."""
 
-    def test_patch_file_exists(self):
-        path = _get_source_file_path("vllm_ascend/patch/platform/patch_mimo_ernie_mtp.py")
-        assert os.path.isfile(path), f"patch file not found: {path}"
-
-    def test_patch_source_syntax(self):
-        source = _read_source_file("vllm_ascend/patch/platform/patch_mimo_ernie_mtp.py")
-        ast.parse(source)
+    def test_patch_module_imports(self):
+        import vllm_ascend.patch.platform.patch_mimo_ernie_mtp  # noqa: F401
