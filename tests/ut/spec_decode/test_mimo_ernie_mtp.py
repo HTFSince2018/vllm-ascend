@@ -74,6 +74,7 @@ class TestMimoErnieMethodRouting:
         vllm_config.model_config.hf_config.architectures = []
         vllm_config.model_config.registry = MagicMock()
         vllm_config.model_config.registry.resolve_model_cls.return_value = (MagicMock(), "test")
+        vllm_config.model_config.convert_type = "auto"
         vllm_config.parallel_config = MagicMock()
         vllm_config.parallel_config.tensor_parallel_size = 1
         vllm_config.parallel_config.data_parallel_rank = 0
@@ -100,6 +101,7 @@ class TestMimoErnieMethodRouting:
         vllm_config.model_config.hf_config.architectures = []
         vllm_config.model_config.registry = MagicMock()
         vllm_config.model_config.registry.resolve_model_cls.return_value = (MagicMock(), "test")
+        vllm_config.model_config.convert_type = "auto"
         vllm_config.parallel_config = MagicMock()
         vllm_config.parallel_config.tensor_parallel_size = 1
         vllm_config.parallel_config.data_parallel_rank = 0
@@ -109,6 +111,7 @@ class TestMimoErnieMethodRouting:
         assert isinstance(proposer, AscendEagleProposer)
 
 
+@patch("vllm_ascend.spec_decode.eagle_proposer.shared_expert_dp_enabled", return_value=False)
 @patch("vllm.multimodal.registry.MultiModalRegistry.supports_multimodal_inputs", return_value=False)
 @patch("vllm.v1.spec_decode.eagle.CpuGpuBuffer")
 class TestMimoErnieInEagleProposer:
