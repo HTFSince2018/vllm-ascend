@@ -84,55 +84,90 @@ class TestMimoErnieMethodRouting:
 
 
 class TestMimoErnieInEagleProposer:
-    """Test that eagle_proposer handles mimo_mtp and ernie_mtp in method checks."""
+    """Test that eagle_proposer handles mimo_mtp and ernie_mtp in method checks.
 
-    def _make_proposer(self, method: str):
+    NOTE: These tests require the mtp-v0191 version of vllm-ascend to be
+    installed or accessible via PYTHONPATH.
+    """
+
+    def _make_vllm_config(self, method: str):
+        from unittest.mock import PropertyMock
+
+        hf_config = MagicMock()
+        hf_config.architectures = ["MiMoForCausalLM"]
+        hf_config.model_type = "mimo"
+        hf_config.num_hidden_layers = 36
+
+        model_config = MagicMock()
+        model_config.dtype = torch.float16
+        model_config.max_model_len = 2048
+        model_config.hf_config = hf_config
+        model_config.hf_text_config = hf_config
+        type(model_config).get_hidden_size = MagicMock(return_value=1024)
+        type(model_config).get_head_size = MagicMock(return_value=128)
+        type(model_config).get_num_kv_heads = MagicMock(return_value=8)
+
+        draft_hf_config = MagicMock()
+        draft_hf_config.model_type = "mimo"
+        draft_hf_config.architectures = ["MiMoMTPModel"]
+        draft_hf_config.num_hidden_layers = 1
+
+        draft_model_config = MagicMock()
+        draft_model_config.hf_config = draft_hf_config
+        draft_model_config.hf_text_config = draft_hf_config
+        draft_model_config.get_hidden_size.return_value = 1024
+        draft_model_config.get_inputs_embeds_size.return_value = 1024
+        draft_model_config.uses_xdrope_dim = 0
+        draft_model_config.uses_mrope = False
+
+        speculative_config = MagicMock()
+        speculative_config.method = method
+        speculative_config.num_speculative_tokens = 1
+        speculative_config.parallel_drafting = False
+        speculative_config.draft_model_config = draft_model_config
+        speculative_config.disable_padded_drafter_batch = False
+        speculative_config.draft_tensor_parallel_size = 1
+
         vllm_config = MagicMock(spec=VllmConfig)
-        vllm_config.speculative_config = MagicMock()
-        vllm_config.speculative_config.method = method
-        vllm_config.speculative_config.num_speculative_tokens = 1
-        vllm_config.speculative_config.parallel_drafting = False
-        vllm_config.speculative_config.draft_model_config = MagicMock()
-        vllm_config.speculative_config.draft_model_config.get_hidden_size.return_value = 1024
-        vllm_config.speculative_config.draft_model_config.get_inputs_embeds_size.return_value = 1024
-        vllm_config.speculative_config.draft_model_config.uses_xdrope_dim = 0
-        vllm_config.speculative_config.draft_model_config.uses_mrope = False
-        vllm_config.speculative_config.disable_padded_drafter_batch = False
+        vllm_config.speculative_config = speculative_config
         vllm_config.cache_config = MagicMock(spec=CacheConfig)
         vllm_config.cache_config.block_size = 16
         vllm_config.scheduler_config = MagicMock()
         vllm_config.scheduler_config.max_num_batched_tokens = 1024
         vllm_config.scheduler_config.max_num_seqs = 32
-        vllm_config.model_config = MagicMock()
-        vllm_config.model_config.dtype = torch.float16
-        vllm_config.model_config.max_model_len = 2048
+        vllm_config.model_config = model_config
         vllm_config.parallel_config = MagicMock()
         vllm_config.parallel_config.tensor_parallel_size = 1
         vllm_config.parallel_config.data_parallel_rank = 0
         vllm_config.parallel_config.data_parallel_size = 1
         vllm_config.compilation_config = MagicMock()
+
         device = torch.device("cpu")
         runner = MagicMock()
-        return AscendEagleProposer(vllm_config, device, runner)
+        return vllm_config, device, runner
 
     def test_mimo_mtp_method_property(self):
         """Proposer.method should preserve 'mimo_mtp'."""
-        proposer = self._make_proposer("mimo_mtp")
+        vllm_config, device, runner = self._make_vllm_config("mimo_mtp")
+        proposer = AscendEagleProposer(vllm_config, device, runner)
         assert proposer.method == "mimo_mtp"
 
     def test_ernie_mtp_method_property(self):
         """Proposer.method should preserve 'ernie_mtp'."""
-        proposer = self._make_proposer("ernie_mtp")
+        vllm_config, device, runner = self._make_vllm_config("ernie_mtp")
+        proposer = AscendEagleProposer(vllm_config, device, runner)
         assert proposer.method == "ernie_mtp"
 
     def test_mimo_mtp_in_use_draft_model_check(self):
         """Proposer should not identify mimo_mtp as a draft_model method."""
-        proposer = self._make_proposer("mimo_mtp")
+        vllm_config, device, runner = self._make_vllm_config("mimo_mtp")
+        proposer = AscendEagleProposer(vllm_config, device, runner)
         assert not proposer.uses_draft_model()
 
     def test_ernie_mtp_in_use_draft_model_check(self):
         """Proposer should not identify ernie_mtp as a draft_model method."""
-        proposer = self._make_proposer("ernie_mtp")
+        vllm_config, device, runner = self._make_vllm_config("ernie_mtp")
+        proposer = AscendEagleProposer(vllm_config, device, runner)
         assert not proposer.uses_draft_model()
 
 
