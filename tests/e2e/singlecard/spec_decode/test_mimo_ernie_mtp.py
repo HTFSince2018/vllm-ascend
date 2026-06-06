@@ -21,16 +21,19 @@ consistent when using the same seed and temperature."""
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 
 import pytest
 from vllm import SamplingParams
+from vllm.logger import logger as vllm_logger
 
 from tests.e2e.conftest import VllmRunner, cleanup_dist_env_and_memory
 
 os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
 
-MIMO_MODEL = "/data/models/MiMo-7B-RL"
+MIMO_MODEL = os.getenv("MIMO_MODEL_PATH", "/data/models/MiMo-7B-RL")
 EXAMPLE_PROMPTS = [
     "Hello, my name is",
     "The president of the United States is",
@@ -41,6 +44,33 @@ EXAMPLE_PROMPTS = [
 
 def _get_sampling_params():
     return SamplingParams(temperature=0.0, max_tokens=256, ignore_eos=False)
+
+
+class _MetricsCapture(logging.Handler):
+    """Capture SpecDecoding metrics lines from the vLLM logger."""
+
+    def __init__(self):
+        super().__init__()
+        self.captured: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        msg = self.format(record)
+        if "SpecDecoding metrics" in msg:
+            self.captured.append(msg)
+
+    def get_metrics(self) -> dict[str, float | int]:
+        result: dict[str, float | int] = {}
+        for line in self.captured:
+            m = re.search(r"Mean acceptance length:\s*([\d.]+)", line)
+            if m:
+                result["mean_acceptance_length"] = float(m.group(1))
+            m = re.search(r"Accepted:\s*(\d+)\s*tokens?", line)
+            if m:
+                result["accepted_tokens"] = int(m.group(1))
+            m = re.search(r"Draft acceptance rate:\s*([\d.]+)%", line)
+            if m:
+                result["draft_acceptance_rate_pct"] = float(m.group(1))
+        return result
 
 
 @pytest.mark.parametrize("method", ["mimo_mtp", "ernie_mtp"])
@@ -57,6 +87,10 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
         "num_speculative_tokens": num_speculative_tokens,
     }
 
+    handler = _MetricsCapture()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    vllm_logger.addHandler(handler)
+
     with VllmRunner(
         MIMO_MODEL,
         tensor_parallel_size=1,
@@ -65,6 +99,9 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
         speculative_config=spec_config,
     ) as spec_llm:
         spec_outputs = spec_llm.generate(EXAMPLE_PROMPTS, _get_sampling_params())
+
+    vllm_logger.removeHandler(handler)
+    metrics = handler.get_metrics()
 
     with VllmRunner(
         MIMO_MODEL,
@@ -89,9 +126,16 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
     total = len(ref_outputs)
     threshold = 0.66
     acceptance_rate = matches / total if total > 0 else 0.0
+
     print(f"\n=== SpecDecode Results: method={method}, num_speculative_tokens={num_speculative_tokens} ===")
     print(f"  Prompts matched:   {matches}/{total} ({acceptance_rate:.1%})")
     print(f"  Prompts diverged:  {misses}/{total}")
+    if metrics.get("mean_acceptance_length") is not None:
+        print(f"  Mean acceptance length:     {metrics['mean_acceptance_length']:.2f}")
+    if metrics.get("accepted_tokens") is not None:
+        print(f"  Accepted tokens:            {metrics['accepted_tokens']}")
+    if metrics.get("draft_acceptance_rate_pct") is not None:
+        print(f"  Draft acceptance rate:      {metrics['draft_acceptance_rate_pct']:.1f}%")
     print(f"  Token-level acceptance threshold: {threshold:.0%}")
     print(f"  Result: {'PASS' if acceptance_rate > threshold else 'FAIL'}\n")
 
