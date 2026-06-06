@@ -121,7 +121,6 @@ def _make_base_vllm_config(method: str) -> tuple:
 
 
 @patch.object(AscendEagleProposer, '__init__', return_value=None)
-@patch.object(AscendEagleProposer, '__init__', return_value=None)
 class TestMimoErnieMethodRouting:
     """get_spec_decode_method returns AscendEagleProposer for both methods."""
 
