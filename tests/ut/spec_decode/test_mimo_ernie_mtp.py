@@ -89,6 +89,7 @@ def _make_base_vllm_config(method: str) -> tuple:
     speculative_config.draft_tensor_parallel_size = 1
     speculative_config.use_local_argmax_reduction = False
     speculative_config.speculative_token_tree = "[(0,)]"
+    speculative_config.uses_draft_model.return_value = False
 
     parallel_config = MagicMock()
     parallel_config.tensor_parallel_size = 1
@@ -119,16 +120,18 @@ def _make_base_vllm_config(method: str) -> tuple:
     return vllm_config, torch.device("cpu"), runner
 
 
+@patch.object(AscendEagleProposer, '__init__', return_value=None)
+@patch.object(AscendEagleProposer, '__init__', return_value=None)
 class TestMimoErnieMethodRouting:
     """get_spec_decode_method returns AscendEagleProposer for both methods."""
 
-    def test_mimo_mtp_routes_to_eagle_proposer(self):
+    def test_mimo_mtp_routes_to_eagle_proposer(self, mock_init):
         vllm_config, device, runner = _make_base_vllm_config("mimo_mtp")
         with _setup_ascend_env(vllm_config):
             proposer = get_spec_decode_method("mimo_mtp", vllm_config, device, runner)
         assert isinstance(proposer, AscendEagleProposer)
 
-    def test_ernie_mtp_routes_to_eagle_proposer(self):
+    def test_ernie_mtp_routes_to_eagle_proposer(self, mock_init):
         vllm_config, device, runner = _make_base_vllm_config("ernie_mtp")
         with _setup_ascend_env(vllm_config):
             proposer = get_spec_decode_method("ernie_mtp", vllm_config, device, runner)
