@@ -62,7 +62,6 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
         tensor_parallel_size=1,
         max_model_len=4096,
         seed=42,
-        trust_remote_code=True,
         speculative_config=spec_config,
     ) as spec_llm:
         spec_outputs = spec_llm.generate(EXAMPLE_PROMPTS, _get_sampling_params())
@@ -72,7 +71,6 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
         tensor_parallel_size=1,
         max_model_len=4096,
         seed=42,
-        trust_remote_code=True,
     ) as ref_llm:
         ref_outputs = ref_llm.generate(EXAMPLE_PROMPTS, _get_sampling_params())
 
