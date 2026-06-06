@@ -835,7 +835,7 @@ class AscendMLAImpl(MLAAttentionImpl):
                     attn_metadata_current = attn_metadata
 
                 seq_lens_list = attn_metadata_current[key].decode.seq_lens_list
-                if speculative_config and speculative_config.method == "mtp" and not _EXTRA_CTX.is_draft_model:
+                if speculative_config and speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp") and not _EXTRA_CTX.is_draft_model:
                     actual_seq_lengths = attn_metadata_current[key].decode.actual_seq_lengths_q
                     spec_multiple = speculative_config.num_speculative_tokens + 1
                     seq_lens_list = seq_lens_list + [0] * (num_tokens // spec_multiple - len(seq_lens_list))

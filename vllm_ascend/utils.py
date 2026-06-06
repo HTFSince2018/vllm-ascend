@@ -861,7 +861,7 @@ def speculative_enable_dispatch_gmm_combine_decode(vllm_config: VllmConfig) -> b
             return quant_type == "w8a8_dynamic"
         else:
             return True
-    if speculative_method == "mtp":
+    if speculative_method in ("mtp", "mimo_mtp", "ernie_mtp"):
         mtp_quant_type = getattr(vllm_config.model_config.hf_text_config, "mtp_quantize", None)
         return mtp_quant_type == "w8a8_dynamic"
     return False

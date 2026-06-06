@@ -141,6 +141,7 @@ class TestMimoErnieInEagleProposer:
         speculative_config.disable_padded_drafter_batch = False
         speculative_config.draft_tensor_parallel_size = 1
         speculative_config.use_local_argmax_reduction = False
+        speculative_config.speculative_token_tree = "[0]"
 
         vllm_config = MagicMock(spec=VllmConfig)
         vllm_config.speculative_config = speculative_config

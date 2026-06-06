@@ -143,14 +143,14 @@ def build_attn_state(
     # but only one token is not hit in cache.
     elif np.all(num_scheduled_tokens == 1):
         attn_state = AscendAttentionState.DecodeOnly
-        if vllm_config.speculative_config and vllm_config.speculative_config.method == "mtp":
+        if vllm_config.speculative_config and vllm_config.speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp"):
             # SpecDecoding now supports seq_len=1 and seq_len=2
             # In Prefilling Decoding Disaggregation scenario, SpecDecoding
             # need to supports seq_len=1
             attn_state = AscendAttentionState.SpecDecoding
     # Speculative decoding.
     elif np.all(num_valid_tokens == 1):
-        if vllm_config.speculative_config and vllm_config.speculative_config.method == "mtp":
+        if vllm_config.speculative_config and vllm_config.speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp"):
             attn_state = AscendAttentionState.SpecDecoding
         else:
             attn_state = AscendAttentionState.ChunkedPrefill
