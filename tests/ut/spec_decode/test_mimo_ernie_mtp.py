@@ -16,6 +16,8 @@
 #
 """Tests for mimo_mtp and ernie_mtp method support."""
 
+import os
+import sys
 from typing import get_args
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +25,12 @@ import pytest
 import torch
 from vllm.config import CacheConfig, VllmConfig
 from vllm.config.speculative import MTPModelTypes
+
+# Ensure the local vllm_ascend source is found first when running
+# from the project root (e.g. /data/mtp-v0191).
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.path.isdir(os.path.join(_project_root, "vllm_ascend")):
+    sys.path.insert(0, _project_root)
 
 import vllm_ascend.spec_decode.eagle_proposer as eagle_proposer
 from vllm_ascend.spec_decode import get_spec_decode_method
@@ -84,11 +92,7 @@ class TestMimoErnieMethodRouting:
 
 
 class TestMimoErnieInEagleProposer:
-    """Test that eagle_proposer handles mimo_mtp and ernie_mtp in method checks.
-
-    NOTE: These tests require the mtp-v0191 version of vllm-ascend to be
-    installed or accessible via PYTHONPATH.
-    """
+    """Test that eagle_proposer handles mimo_mtp and ernie_mtp in method checks."""
 
     def _make_vllm_config(self, method: str):
         hf_config = MagicMock()
@@ -101,6 +105,8 @@ class TestMimoErnieInEagleProposer:
         model_config.max_model_len = 2048
         model_config.hf_config = hf_config
         model_config.hf_text_config = hf_config
+        model_config.uses_xdrope_dim = 0
+        model_config.uses_mrope = False
 
         draft_hf_config = MagicMock()
         draft_hf_config.model_type = "mimo"
