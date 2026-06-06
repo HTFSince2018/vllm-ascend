@@ -223,23 +223,9 @@ class TestMimoErnieMethodDetection:
 
 
 class TestMimoErniePatchLoading:
-    """Test that the patch_mimo_ernie_mtp module loads correctly.
-
-    NOTE: This test requires PYTHONPATH to include the mtp-v0191 source
-    directory. Run with::
-        export PYTHONPATH=/data/mtp-v0191:$PYTHONPATH
-        pytest tests/ut/spec_decode/test_mimo_ernie_mtp.py -v
-    """
+    """Test that the patch_mimo_ernie_mtp module loads correctly."""
 
     def test_patch_module_imports(self):
         """The patch module should be importable without errors."""
-        try:
-            import vllm_ascend.patch.platform.patch_mimo_ernie_mtp  # noqa: F401
-            assert True
-        except ImportError as e:
-            msg = (
-                "patch_mimo_ernie_mtp module failed to import. "
-                "Make sure PYTHONPATH includes the mtp-v0191 source directory. "
-                f"Error: {e}"
-            )
-            assert False, msg
+        import vllm_ascend.patch.platform.patch_mimo_ernie_mtp  # noqa: F401
+        assert True
