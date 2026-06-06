@@ -64,6 +64,8 @@ def _make_base_vllm_config(method: str) -> tuple:
     model_config.hf_text_config = hf_config
     model_config.uses_xdrope_dim = 0
     model_config.uses_mrope = False
+    model_config.registry = MagicMock()
+    model_config.registry.resolve_model_cls.return_value = (MagicMock(), "test")
 
     draft_hf_config = MagicMock()
     draft_hf_config.model_type = "mimo"
@@ -155,13 +157,13 @@ class TestMimoErnieInEagleProposer:
         vllm_config, device, runner = _make_base_vllm_config("mimo_mtp")
         with _setup_ascend_env(vllm_config):
             proposer = AscendEagleProposer(vllm_config, device, runner)
-        assert not proposer.uses_draft_model()
+        assert not proposer.speculative_config.uses_draft_model()
 
     def test_ernie_mtp_in_use_draft_model_check(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
         vllm_config, device, runner = _make_base_vllm_config("ernie_mtp")
         with _setup_ascend_env(vllm_config):
             proposer = AscendEagleProposer(vllm_config, device, runner)
-        assert not proposer.uses_draft_model()
+        assert not proposer.speculative_config.uses_draft_model()
 
 
 class TestMimoErnieMethodDetection:
