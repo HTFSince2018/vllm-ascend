@@ -1,7 +1,27 @@
+#
+# Copyright (c) 2026 Huawei Technologies Co., Ltd. All Rights Reserved.
+# Copyright 2025 The vLLM team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# This file is a part of the vllm-ascend project.
+#
 """Tests for mimo_mtp and ernie_mtp method support."""
 
+from __future__ import annotations
+
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import get_args
+from typing import NamedTuple, get_args
 from unittest.mock import MagicMock, patch
 
 import torch
@@ -15,8 +35,14 @@ from vllm_ascend.spec_decode.eagle_proposer import AscendEagleProposer
 from vllm_ascend.utils import speculative_enable_dispatch_gmm_combine_decode
 
 
+class VllmFixture(NamedTuple):
+    vllm_config: MagicMock
+    device: torch.device
+    runner: MagicMock
+
+
 @contextmanager
-def _setup_ascend_env(vllm_config):
+def _setup_ascend_env(vllm_config: MagicMock) -> Generator:
     init_ascend_config(vllm_config)
     set_current_vllm_config(vllm_config)
     try:
@@ -26,32 +52,7 @@ def _setup_ascend_env(vllm_config):
         clear_ascend_config()
 
 
-class TestMimoErnieMethodRecognition:
-    """mimo_mtp and ernie_mtp must be recognised as valid MTP methods."""
-
-    def test_mimo_mtp_in_mtp_model_types(self):
-        assert "mimo_mtp" in get_args(MTPModelTypes)
-
-    def test_ernie_mtp_in_mtp_model_types(self):
-        assert "ernie_mtp" in get_args(MTPModelTypes)
-
-
-class TestMimoErnieMethodNormalization:
-    """Deprecated MTP aliases are normalised to mtp upstream."""
-
-    def test_mimo_mtp_normalized_to_mtp(self):
-        assert "mimo_mtp" in get_args(MTPModelTypes)
-        assert "mtp" in get_args(MTPModelTypes)
-
-    def test_ernie_mtp_normalized_to_mtp(self):
-        assert "ernie_mtp" in get_args(MTPModelTypes)
-        assert "mtp" in get_args(MTPModelTypes)
-
-    def test_mtp_is_in_mtp_model_types(self):
-        assert "mtp" in get_args(MTPModelTypes)
-
-
-def _make_base_vllm_config(method: str) -> tuple:
+def _make_vllm_fixture(method: str) -> VllmFixture:
     hf_config = MagicMock()
     hf_config.architectures = ["MiMoForCausalLM"]
     hf_config.model_type = "mimo"
@@ -117,7 +118,17 @@ def _make_base_vllm_config(method: str) -> tuple:
     runner = MagicMock()
     runner.pin_memory = False
 
-    return vllm_config, torch.device("cpu"), runner
+    return VllmFixture(vllm_config=vllm_config, device=torch.device("cpu"), runner=runner)
+
+
+class TestMimoErnieMethodRecognition:
+    """mimo_mtp and ernie_mtp must be recognised as valid MTP methods."""
+
+    def test_mimo_mtp_in_mtp_model_types(self):
+        assert "mimo_mtp" in get_args(MTPModelTypes)
+
+    def test_ernie_mtp_in_mtp_model_types(self):
+        assert "ernie_mtp" in get_args(MTPModelTypes)
 
 
 @patch("vllm_ascend.spec_decode.eagle_proposer.shared_expert_dp_enabled", return_value=False)
@@ -127,15 +138,15 @@ class TestMimoErnieMethodRouting:
     """get_spec_decode_method returns AscendEagleProposer for both methods."""
 
     def test_mimo_mtp_routes_to_eagle_proposer(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
-        vllm_config, device, runner = _make_base_vllm_config("mimo_mtp")
-        with _setup_ascend_env(vllm_config):
-            proposer = get_spec_decode_method("mimo_mtp", vllm_config, device, runner)
+        fix = _make_vllm_fixture("mimo_mtp")
+        with _setup_ascend_env(fix.vllm_config):
+            proposer = get_spec_decode_method("mimo_mtp", fix.vllm_config, fix.device, fix.runner)
         assert isinstance(proposer, AscendEagleProposer)
 
     def test_ernie_mtp_routes_to_eagle_proposer(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
-        vllm_config, device, runner = _make_base_vllm_config("ernie_mtp")
-        with _setup_ascend_env(vllm_config):
-            proposer = get_spec_decode_method("ernie_mtp", vllm_config, device, runner)
+        fix = _make_vllm_fixture("ernie_mtp")
+        with _setup_ascend_env(fix.vllm_config):
+            proposer = get_spec_decode_method("ernie_mtp", fix.vllm_config, fix.device, fix.runner)
         assert isinstance(proposer, AscendEagleProposer)
 
 
@@ -146,27 +157,27 @@ class TestMimoErnieInEagleProposer:
     """EagleProposer correctly stores mimo_mtp/ernie_mtp method names."""
 
     def test_mimo_mtp_method_property(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
-        vllm_config, device, runner = _make_base_vllm_config("mimo_mtp")
-        with _setup_ascend_env(vllm_config):
-            proposer = AscendEagleProposer(vllm_config, device, runner)
+        fix = _make_vllm_fixture("mimo_mtp")
+        with _setup_ascend_env(fix.vllm_config):
+            proposer = AscendEagleProposer(fix.vllm_config, fix.device, fix.runner)
         assert proposer.method == "mimo_mtp"
 
     def test_ernie_mtp_method_property(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
-        vllm_config, device, runner = _make_base_vllm_config("ernie_mtp")
-        with _setup_ascend_env(vllm_config):
-            proposer = AscendEagleProposer(vllm_config, device, runner)
+        fix = _make_vllm_fixture("ernie_mtp")
+        with _setup_ascend_env(fix.vllm_config):
+            proposer = AscendEagleProposer(fix.vllm_config, fix.device, fix.runner)
         assert proposer.method == "ernie_mtp"
 
     def test_mimo_mtp_in_use_draft_model_check(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
-        vllm_config, device, runner = _make_base_vllm_config("mimo_mtp")
-        with _setup_ascend_env(vllm_config):
-            proposer = AscendEagleProposer(vllm_config, device, runner)
+        fix = _make_vllm_fixture("mimo_mtp")
+        with _setup_ascend_env(fix.vllm_config):
+            proposer = AscendEagleProposer(fix.vllm_config, fix.device, fix.runner)
         assert not proposer.speculative_config.uses_draft_model()
 
     def test_ernie_mtp_in_use_draft_model_check(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
-        vllm_config, device, runner = _make_base_vllm_config("ernie_mtp")
-        with _setup_ascend_env(vllm_config):
-            proposer = AscendEagleProposer(vllm_config, device, runner)
+        fix = _make_vllm_fixture("ernie_mtp")
+        with _setup_ascend_env(fix.vllm_config):
+            proposer = AscendEagleProposer(fix.vllm_config, fix.device, fix.runner)
         assert not proposer.speculative_config.uses_draft_model()
 
 

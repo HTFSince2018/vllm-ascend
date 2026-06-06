@@ -83,12 +83,20 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
             matches += 1
         else:
             misses += 1
-            print(f"ref_output: {ref_output[1][0]}")
-            print(f"spec_output: {spec_output[1][0]}")
+            print(f"  ref_output: {ref_output[1][0]}")
+            print(f"  spec_output: {spec_output[1][0]}")
 
+    total = len(ref_outputs)
     threshold = 0.66
-    assert matches > int(threshold * len(ref_outputs)), (
-        f"method={method}, matches={matches}/{len(ref_outputs)}, "
+    acceptance_rate = matches / total if total > 0 else 0.0
+    print(f"\n=== SpecDecode Results: method={method}, num_speculative_tokens={num_speculative_tokens} ===")
+    print(f"  Prompts matched:   {matches}/{total} ({acceptance_rate:.1%})")
+    print(f"  Prompts diverged:  {misses}/{total}")
+    print(f"  Token-level acceptance threshold: {threshold:.0%}")
+    print(f"  Result: {'PASS' if acceptance_rate > threshold else 'FAIL'}\n")
+
+    assert acceptance_rate > threshold, (
+        f"method={method}, matches={matches}/{total}, "
         "indicating speculative decoding changed the outputs."
     )
     cleanup_dist_env_and_memory()
