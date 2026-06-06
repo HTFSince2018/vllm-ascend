@@ -120,16 +120,19 @@ def _make_base_vllm_config(method: str) -> tuple:
     return vllm_config, torch.device("cpu"), runner
 
 
+@patch("vllm_ascend.spec_decode.eagle_proposer.shared_expert_dp_enabled", return_value=False)
+@patch("vllm.multimodal.registry.MultiModalRegistry.supports_multimodal_inputs", return_value=False)
+@patch("vllm.v1.spec_decode.eagle.CpuGpuBuffer")
 class TestMimoErnieMethodRouting:
     """get_spec_decode_method returns AscendEagleProposer for both methods."""
 
-    def test_mimo_mtp_routes_to_eagle_proposer(self):
+    def test_mimo_mtp_routes_to_eagle_proposer(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
         vllm_config, device, runner = _make_base_vllm_config("mimo_mtp")
         with _setup_ascend_env(vllm_config):
             proposer = get_spec_decode_method("mimo_mtp", vllm_config, device, runner)
         assert isinstance(proposer, AscendEagleProposer)
 
-    def test_ernie_mtp_routes_to_eagle_proposer(self):
+    def test_ernie_mtp_routes_to_eagle_proposer(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
         vllm_config, device, runner = _make_base_vllm_config("ernie_mtp")
         with _setup_ascend_env(vllm_config):
             proposer = get_spec_decode_method("ernie_mtp", vllm_config, device, runner)
