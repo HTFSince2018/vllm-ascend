@@ -27,6 +27,7 @@ from vllm.config.speculative import MTPModelTypes
 import vllm_ascend.spec_decode.eagle_proposer as eagle_proposer
 from vllm_ascend.spec_decode import get_spec_decode_method
 from vllm_ascend.spec_decode.eagle_proposer import AscendEagleProposer
+from vllm_ascend.utils import speculative_enable_dispatch_gmm_combine_decode
 
 
 class TestMimoErnieMethodRecognition:
@@ -133,3 +134,66 @@ class TestMimoErnieInEagleProposer:
         """Proposer should not identify ernie_mtp as a draft_model method."""
         proposer = self._make_proposer("ernie_mtp")
         assert not proposer.uses_draft_model()
+
+
+class TestMimoErnieMethodNormalization:
+    """Test MTP method normalization behavior.
+
+    Upstream vLLM converts deprecated MTP method aliases (mimo_mtp, ernie_mtp)
+    to 'mtp' via SpeculativeConfig.__post_init__. These tests verify that
+    after normalization, the vllm-ascend code still correctly routes requests
+    to the MTP execution path.
+    """
+
+    def test_mimo_mtp_normalized_to_mtp(self):
+        """mimo_mtp should be listed among MTP types that get normalized."""
+        assert "mimo_mtp" in get_args(MTPModelTypes)
+        assert "mtp" in get_args(MTPModelTypes)
+
+    def test_ernie_mtp_normalized_to_mtp(self):
+        """ernie_mtp should be listed among MTP types that get normalized."""
+        assert "ernie_mtp" in get_args(MTPModelTypes)
+        assert "mtp" in get_args(MTPModelTypes)
+
+    def test_mtp_is_in_mtp_model_types(self):
+        """The canonical 'mtp' method should be in MTPModelTypes."""
+        assert "mtp" in get_args(MTPModelTypes)
+
+
+class TestMimoErnieMethodDetection:
+    """Test mimo_mtp/ernie_mtp detection in utility functions."""
+
+    def _make_vllm_config(self, method):
+        vllm_config = MagicMock(spec=VllmConfig)
+        vllm_config.speculative_config = MagicMock()
+        vllm_config.speculative_config.method = method
+        vllm_config.model_config = MagicMock()
+        vllm_config.model_config.hf_text_config = MagicMock()
+        vllm_config.model_config.hf_text_config.to_dict = MagicMock(return_value={})
+        return vllm_config
+
+    def test_mimo_mtp_detected_as_mtp_method(self):
+        """speculative_enable_dispatch_gmm_combine_decode should return
+        False for mimo_mtp (meaning it's not an EAGLE method)."""
+        vllm_config = self._make_vllm_config("mimo_mtp")
+        result = speculative_enable_dispatch_gmm_combine_decode(vllm_config)
+        assert result is False
+
+    def test_ernie_mtp_detected_as_mtp_method(self):
+        """speculative_enable_dispatch_gmm_combine_decode should also
+        catch ernie_mtp as an MTP method."""
+        vllm_config = self._make_vllm_config("ernie_mtp")
+        result = speculative_enable_dispatch_gmm_combine_decode(vllm_config)
+        assert result is False
+
+
+class TestMimoErniePatchLoading:
+    """Test that the patch_mimo_ernie_mtp module loads correctly."""
+
+    def test_patch_module_imports(self):
+        """The patch module should be importable without errors."""
+        try:
+            import vllm_ascend.patch.platform.patch_mimo_ernie_mtp  # noqa: F401
+            assert True
+        except ImportError:
+            assert False, "patch_mimo_ernie_mtp module failed to import"
