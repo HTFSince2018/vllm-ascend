@@ -74,7 +74,7 @@ class TestMimoErnieMethodRouting:
         vllm_config.model_config.hf_config.architectures = []
         vllm_config.model_config.registry = MagicMock()
         vllm_config.model_config.registry.resolve_model_cls.return_value = (MagicMock(), "test")
-        vllm_config.model_config.convert_type = "auto"
+        vllm_config.model_config.convert_type = None
         vllm_config.parallel_config = MagicMock()
         vllm_config.parallel_config.tensor_parallel_size = 1
         vllm_config.parallel_config.data_parallel_rank = 0
@@ -101,7 +101,7 @@ class TestMimoErnieMethodRouting:
         vllm_config.model_config.hf_config.architectures = []
         vllm_config.model_config.registry = MagicMock()
         vllm_config.model_config.registry.resolve_model_cls.return_value = (MagicMock(), "test")
-        vllm_config.model_config.convert_type = "auto"
+        vllm_config.model_config.convert_type = None
         vllm_config.parallel_config = MagicMock()
         vllm_config.parallel_config.tensor_parallel_size = 1
         vllm_config.parallel_config.data_parallel_rank = 0
@@ -170,22 +170,22 @@ class TestMimoErnieInEagleProposer:
 
         return vllm_config, torch.device("cpu"), MagicMock()
 
-    def test_mimo_mtp_method_property(self, mock_cpugpubuffer, mock_multimodal):
+    def test_mimo_mtp_method_property(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
         vllm_config, device, runner = self._make_vllm_config("mimo_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
         assert proposer.method == "mimo_mtp"
 
-    def test_ernie_mtp_method_property(self, mock_cpugpubuffer, mock_multimodal):
+    def test_ernie_mtp_method_property(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
         vllm_config, device, runner = self._make_vllm_config("ernie_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
         assert proposer.method == "ernie_mtp"
 
-    def test_mimo_mtp_in_use_draft_model_check(self, mock_cpugpubuffer, mock_multimodal):
+    def test_mimo_mtp_in_use_draft_model_check(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
         vllm_config, device, runner = self._make_vllm_config("mimo_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
         assert not proposer.uses_draft_model()
 
-    def test_ernie_mtp_in_use_draft_model_check(self, mock_cpugpubuffer, mock_multimodal):
+    def test_ernie_mtp_in_use_draft_model_check(self, mock_cpugpubuffer, mock_multimodal, mock_shared_expert_dp):
         vllm_config, device, runner = self._make_vllm_config("ernie_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
         assert not proposer.uses_draft_model()
