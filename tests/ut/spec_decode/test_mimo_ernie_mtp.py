@@ -91,8 +91,6 @@ class TestMimoErnieInEagleProposer:
     """
 
     def _make_vllm_config(self, method: str):
-        from unittest.mock import PropertyMock
-
         hf_config = MagicMock()
         hf_config.architectures = ["MiMoForCausalLM"]
         hf_config.model_type = "mimo"
@@ -103,9 +101,6 @@ class TestMimoErnieInEagleProposer:
         model_config.max_model_len = 2048
         model_config.hf_config = hf_config
         model_config.hf_text_config = hf_config
-        type(model_config).get_hidden_size = MagicMock(return_value=1024)
-        type(model_config).get_head_size = MagicMock(return_value=128)
-        type(model_config).get_num_kv_heads = MagicMock(return_value=8)
 
         draft_hf_config = MagicMock()
         draft_hf_config.model_type = "mimo"
@@ -146,25 +141,29 @@ class TestMimoErnieInEagleProposer:
         runner = MagicMock()
         return vllm_config, device, runner
 
-    def test_mimo_mtp_method_property(self):
+    @patch("vllm.multimodal.registry.MultiModalRegistry.supports_multimodal_inputs", return_value=False)
+    def test_mimo_mtp_method_property(self, mock_multimodal):
         """Proposer.method should preserve 'mimo_mtp'."""
         vllm_config, device, runner = self._make_vllm_config("mimo_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
         assert proposer.method == "mimo_mtp"
 
-    def test_ernie_mtp_method_property(self):
+    @patch("vllm.multimodal.registry.MultiModalRegistry.supports_multimodal_inputs", return_value=False)
+    def test_ernie_mtp_method_property(self, mock_multimodal):
         """Proposer.method should preserve 'ernie_mtp'."""
         vllm_config, device, runner = self._make_vllm_config("ernie_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
         assert proposer.method == "ernie_mtp"
 
-    def test_mimo_mtp_in_use_draft_model_check(self):
+    @patch("vllm.multimodal.registry.MultiModalRegistry.supports_multimodal_inputs", return_value=False)
+    def test_mimo_mtp_in_use_draft_model_check(self, mock_multimodal):
         """Proposer should not identify mimo_mtp as a draft_model method."""
         vllm_config, device, runner = self._make_vllm_config("mimo_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
         assert not proposer.uses_draft_model()
 
-    def test_ernie_mtp_in_use_draft_model_check(self):
+    @patch("vllm.multimodal.registry.MultiModalRegistry.supports_multimodal_inputs", return_value=False)
+    def test_ernie_mtp_in_use_draft_model_check(self, mock_multimodal):
         """Proposer should not identify ernie_mtp as a draft_model method."""
         vllm_config, device, runner = self._make_vllm_config("ernie_mtp")
         proposer = AscendEagleProposer(vllm_config, device, runner)
