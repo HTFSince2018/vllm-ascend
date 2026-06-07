@@ -16,22 +16,24 @@
 # This file is a part of the vllm-ascend project.
 # Adapted from tests/e2e/singlecard/spec_decode/test_mtp_eagle_correctness.py
 #
-"""Compare the outputs of a speculative LLM (using mimo_mtp or ernie_mtp)
-and a non-speculative reference LLM using the same seed and temperature.
+"""E2E tests for mimo_mtp and ernie_mtp speculative decoding on Ascend NPU.
 
-Both runs use the same prompts, seed (42), and greedy sampling (temperature=0).
-The speculative outputs should match the non-speculative outputs for at least
-66% of the prompts, confirming that the speculative method does not alter
-the model's output distribution."""
+Test coverage:
+  - test_mimo_ernie_mtp_dummy_load :  Verify model loads and architecture resolves
+  - test_mimo_ernie_mtp_correctness:  Semantic consistency (spec vs reference)
+  - test_mimo_ernie_mtp_multi_request: Continuous multi-request stability
+  - test_mimo_ernie_mtp_openai_api   : OpenAI-compatible API serving
+"""
 
 from __future__ import annotations
 
 import os
 
+import openai
 import pytest
 from vllm import SamplingParams
 
-from tests.e2e.conftest import VllmRunner, cleanup_dist_env_and_memory
+from tests.e2e.conftest import RemoteOpenAIServer, VllmRunner, cleanup_dist_env_and_memory
 
 os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
 
@@ -46,6 +48,40 @@ EXAMPLE_PROMPTS = [
 
 def _get_sampling_params():
     return SamplingParams(temperature=0.0, max_tokens=256, ignore_eos=False)
+
+
+def _make_server_args(method: str) -> list[str]:
+    return [
+        "--speculative-config",
+        f'{{"method": "{method}", "num_speculative_tokens": 1}}',
+        "--max-model-len",
+        "4096",
+        "--seed",
+        "42",
+        "--gpu-memory-utilization",
+        "0.7",
+        "--tensor-parallel-size",
+        "1",
+    ]
+
+
+def test_mimo_ernie_mtp_dummy_load():
+    """Verify the MiMo model loads and its architecture resolves correctly."""
+    with VllmRunner(
+        MIMO_MODEL,
+        tensor_parallel_size=1,
+        gpu_memory_utilization=0.7,
+        max_num_seqs=256,
+        max_model_len=4096,
+        seed=42,
+        speculative_config={
+            "method": "mimo_mtp",
+            "num_speculative_tokens": 1,
+        },
+    ) as llm:
+        assert llm is not None
+        cleanup_dist_env_and_memory()
+        del llm
 
 
 @pytest.mark.parametrize("method", ["mimo_mtp", "ernie_mtp"])
@@ -105,3 +141,58 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
     cleanup_dist_env_and_memory()
     del spec_llm
     del ref_llm
+
+
+@pytest.mark.parametrize("method", ["mimo_mtp", "ernie_mtp"])
+def test_mimo_ernie_mtp_multi_request(method: str):
+    """Verify the speculative model handles multiple consecutive
+    generate requests without crashing."""
+    spec_config = {
+        "method": method,
+        "num_speculative_tokens": 1,
+    }
+
+    with VllmRunner(
+        MIMO_MODEL,
+        tensor_parallel_size=1,
+        gpu_memory_utilization=0.7,
+        max_num_seqs=256,
+        max_model_len=4096,
+        seed=42,
+        speculative_config=spec_config,
+    ) as llm:
+        for i in range(3):
+            outputs = llm.generate(EXAMPLE_PROMPTS, _get_sampling_params())
+            assert len(outputs) == len(EXAMPLE_PROMPTS), (
+                f"Request {i + 1}: expected {len(EXAMPLE_PROMPTS)} outputs, "
+                f"got {len(outputs)}"
+            )
+            print(f"  Multi-request {i + 1}/3: {len(outputs)} outputs generated")
+        cleanup_dist_env_and_memory()
+        del llm
+
+
+@pytest.mark.parametrize("method", ["mimo_mtp", "ernie_mtp"])
+def test_mimo_ernie_mtp_openai_api(method: str):
+    """Verify that the model serves OpenAI-compatible API requests
+    with the speculative method enabled.
+
+    This test starts a vllm serve subprocess, waits for it to be ready,
+    sends a completion request, and validates the JSON response.
+    """
+    server_args = _make_server_args(method)
+    with RemoteOpenAIServer(
+        MIMO_MODEL,
+        vllm_serve_args=server_args,
+        max_wait_seconds=600,
+    ) as server:
+        client = server.get_client()
+        response = client.completions.create(
+            model=MIMO_MODEL,
+            prompt=EXAMPLE_PROMPTS[0],
+            max_tokens=50,
+            temperature=0.0,
+        )
+        assert len(response.choices) > 0, "No choices returned"
+        assert response.choices[0].text is not None, "Empty response text"
+        assert len(response.choices[0].text.strip()) > 0, "Response text is whitespace only"
