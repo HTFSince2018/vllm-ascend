@@ -14,10 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # This file is a part of the vllm-ascend project.
+# Adapted from tests/e2e/singlecard/spec_decode/test_mtp_eagle_correctness.py
 #
-"""Compare the outputs of a non-speculative LLM and a speculative LLM
-using mimo_mtp and ernie_mtp methods. Outputs should be semantically
-consistent when using the same seed and temperature."""
+"""Compare the outputs of a speculative LLM (using mimo_mtp or ernie_mtp)
+and a non-speculative reference LLM using the same seed and temperature.
+
+Both runs use the same prompts, seed (42), and greedy sampling (temperature=0).
+The speculative outputs should match the non-speculative outputs for at least
+66% of the prompts, confirming that the speculative method does not alter
+the model's output distribution."""
 
 from __future__ import annotations
 
@@ -61,6 +66,7 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
         MIMO_MODEL,
         tensor_parallel_size=1,
         gpu_memory_utilization=0.7,
+        max_num_seqs=256,
         max_model_len=4096,
         seed=42,
         speculative_config=spec_config,
@@ -71,6 +77,7 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
         MIMO_MODEL,
         tensor_parallel_size=1,
         gpu_memory_utilization=0.7,
+        max_num_seqs=256,
         max_model_len=4096,
         seed=42,
     ) as ref_llm:
@@ -88,6 +95,8 @@ def test_mimo_ernie_mtp_correctness(method: str, num_speculative_tokens: int):
             print(f"ref_output: {ref_output[1][0]}")
             print(f"spec_output: {spec_output[1][0]}")
 
+    # Heuristic: expect at least 66% of the prompts to match exactly
+    # Upon failure, inspect the outputs to check for inaccuracy.
     threshold = 0.66
     assert matches > int(threshold * len(ref_outputs)), (
         f"method={method}, matches={matches}/{len(ref_outputs)}, "
