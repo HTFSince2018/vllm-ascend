@@ -182,8 +182,7 @@ def test_mimo_ernie_mtp_openai_api(method: str):
     This test starts a vllm serve subprocess, waits for it to be ready,
     sends a completion request, and validates the JSON response.
     """
-    server_args = _make_server_args(method)
-    port = get_open_port()
+    server_args = _make_server_args(method) + ["--port", str(port)]
     with RemoteOpenAIServer(
         MIMO_MODEL,
         vllm_serve_args=server_args,
