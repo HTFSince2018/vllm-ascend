@@ -54,6 +54,7 @@ def _make_server_args(method: str) -> list[str]:
     return [
         "--speculative-config",
         f'{{"method": "{method}", "num_speculative_tokens": 1}}',
+        "--trust-remote-code",
         "--max-model-len",
         "4096",
         "--seed",
