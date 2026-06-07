@@ -32,6 +32,7 @@ import os
 import openai
 import pytest
 from vllm import SamplingParams
+from vllm.utils.network_utils import get_open_port
 
 from tests.e2e.conftest import RemoteOpenAIServer, VllmRunner, cleanup_dist_env_and_memory
 
@@ -182,9 +183,12 @@ def test_mimo_ernie_mtp_openai_api(method: str):
     sends a completion request, and validates the JSON response.
     """
     server_args = _make_server_args(method)
+    port = get_open_port()
     with RemoteOpenAIServer(
         MIMO_MODEL,
         vllm_serve_args=server_args,
+        server_port=port,
+        auto_port=False,
         max_wait_seconds=600,
     ) as server:
         client = server.get_client()
