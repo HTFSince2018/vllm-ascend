@@ -226,7 +226,7 @@ class AscendRotaryEmbedding(RotaryEmbedding):
     ) -> None:
         super().__init__(head_size, rotary_dim, max_position_embeddings, base, is_neox_style, dtype, init_cache)
         vllm_config = get_current_vllm_config()
-        self.use_mtp = vllm_config.speculative_config and vllm_config.speculative_config.method == "mtp"
+        self.use_mtp = vllm_config.speculative_config and vllm_config.speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp")
         _record_cos_sin_cache(self.cos_sin_cache)
         _record_cos_and_sin_cache_interleaved(self.cos_sin_cache)
 
@@ -281,7 +281,7 @@ class AscendYaRNRotaryEmbedding(YaRNScalingRotaryEmbedding):
             head_size, rotary_dim, max_position_embeddings, base, is_neox_style, scaling_factor, dtype, **extra_kwargs
         )
         vllm_config = get_current_vllm_config()
-        self.use_mtp = vllm_config.speculative_config and vllm_config.speculative_config.method == "mtp"
+        self.use_mtp = vllm_config.speculative_config and vllm_config.speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp")
         _record_cos_sin_cache(self.cos_sin_cache)
 
     def forward_oot(

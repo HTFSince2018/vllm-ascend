@@ -1497,7 +1497,7 @@ class NPUModelRunner(GPUModelRunner):
         # We assume it is the decode stage, where prefill occurs but only one token is not hit in cache.
         elif np.all(num_scheduled_tokens == 1):
             attn_state = AscendAttentionState.DecodeOnly
-            if self.speculative_config and self.speculative_config.method == "mtp":
+            if self.speculative_config and self.speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp"):
                 # SpecDecoding now supports seq_len=1 and seq_len=2
                 # In Prefilling Decoding Disaggregation scenario, SpecDecoding need to supports seq_len=1
                 attn_state = AscendAttentionState.SpecDecoding
@@ -1515,7 +1515,7 @@ class NPUModelRunner(GPUModelRunner):
 
         # For the overlay of the PCP feature and the eagle3, attn_state needs to be recovered
         # TODO: Resolved the conflict between the sunset of attn_state and the PCP that requires this interface.
-        if attn_state == AscendAttentionState.SpecDecoding and self.speculative_config.method != "mtp":
+        if attn_state == AscendAttentionState.SpecDecoding and self.speculative_config.method not in ("mtp", "mimo_mtp", "ernie_mtp"):
             self.attn_state = AscendAttentionState.ChunkedPrefill  # type: ignore
         else:
             self.attn_state = attn_state  # type: ignore
@@ -3386,7 +3386,7 @@ class NPUModelRunner(GPUModelRunner):
                     "create_mixed_batch is used for warmup deepgemm, vllm-ascend does not need it"
                 )
             self.attn_state = AscendAttentionState.DecodeOnly
-            if self.speculative_config and self.speculative_config.method == "mtp":
+            if self.speculative_config and self.speculative_config.method in ("mtp", "mimo_mtp", "ernie_mtp"):
                 # `AscendAttentionState.SpecDecoding` is only designed for mla
                 if self.vllm_config.model_config.use_mla:
                     self.attn_state = AscendAttentionState.SpecDecoding
